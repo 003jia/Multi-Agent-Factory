@@ -1,0 +1,120 @@
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1440" height="1024" fill="#F7FAFF"/>
+  <filter id="glass" x="-20%" y="-80%" width="140%" height="260%">
+    <feGaussianBlur stdDeviation="18"/>
+  </filter>
+  <rect x="0" y="0" width="1440" height="88" fill="white" fill-opacity="0.88"/>
+  <rect x="0" y="87" width="1440" height="1" fill="#E2E8F0"/>
+  <g font-family="Inter, PingFang SC, Arial, sans-serif" font-weight="700">
+    <g transform="translate(28 16)">
+      <rect width="178" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#DCFCE7"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#22C55E">1</text>
+      <text x="58" y="35" font-size="16" fill="#475569">任务录入</text>
+    </g>
+    <g transform="translate(224 16)">
+      <rect width="178" height="56" rx="18" fill="#EFF6FF" stroke="#2563EB" stroke-opacity="0.35"/>
+      <circle cx="28" cy="28" r="19" fill="#2563EB"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="white">2</text>
+      <text x="58" y="35" font-size="16" fill="#2563EB">需求确认</text>
+    </g>
+    <g transform="translate(420 16)">
+      <rect width="178" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#64748B">3</text>
+      <text x="58" y="35" font-size="16" fill="#475569">计划确认</text>
+    </g>
+    <g transform="translate(616 16)">
+      <rect width="178" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#64748B">4</text>
+      <text x="58" y="35" font-size="16" fill="#475569">任务分派</text>
+    </g>
+    <g transform="translate(812 16)">
+      <rect width="178" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#64748B">5</text>
+      <text x="58" y="35" font-size="16" fill="#475569">代码生成</text>
+    </g>
+    <g transform="translate(1008 16)">
+      <rect width="178" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#64748B">6</text>
+      <text x="58" y="35" font-size="16" fill="#475569">代码审查</text>
+    </g>
+    <g transform="translate(1204 16)">
+      <rect width="208" height="56" rx="18" fill="white" stroke="#E2E8F0"/>
+      <circle cx="28" cy="28" r="19" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="28" y="34" text-anchor="middle" font-size="15" fill="#64748B">7</text>
+      <text x="58" y="35" font-size="16" fill="#475569">提交完成</text>
+    </g>
+  </g>
+
+  <g font-family="Inter, PingFang SC, Arial, sans-serif">
+    <text x="36" y="148" font-size="30" font-weight="800" fill="#0F172A">多 Agent 工厂客户端</text>
+    <text x="36" y="176" font-size="15" fill="#64748B">一个步骤一个页面，当前为第 2 步：需求确认</text>
+    <g transform="translate(1105 126)">
+      <rect width="112" height="30" rx="15" fill="#EFF6FF" stroke="#2563EB" stroke-opacity="0.18"/>
+      <circle cx="16" cy="15" r="4" fill="#2563EB"/>
+      <text x="28" y="20" font-size="12" font-weight="700" fill="#2563EB">Mock 模型层</text>
+    </g>
+    <g transform="translate(1230 126)">
+      <rect width="82" height="30" rx="15" fill="#FEF9C3" stroke="#EAB308" stroke-opacity="0.2"/>
+      <circle cx="16" cy="15" r="4" fill="#EAB308"/>
+      <text x="28" y="20" font-size="12" font-weight="700" fill="#A16207">验证中</text>
+    </g>
+    <rect x="36" y="206" width="1368" height="92" rx="18" fill="white" stroke="#E2E8F0"/>
+    <g font-size="12" fill="#64748B">
+      <text x="58" y="234" font-weight="700">责任 Agent</text>
+      <text x="248" y="234" font-weight="700">职责</text>
+      <text x="620" y="234" font-weight="700">输入</text>
+      <text x="818" y="234" font-weight="700">输出</text>
+      <text x="1054" y="234" font-weight="700">门禁</text>
+    </g>
+    <g font-size="14" font-weight="700" fill="#0F172A">
+      <text x="58" y="264">产品需求 Agent</text>
+      <text x="248" y="264">生成需求草稿，接收人工反馈并改写，锁定需求版本。</text>
+      <text x="620" y="264">任务目标 / 反馈意见</text>
+      <text x="818" y="264">需求文档版本</text>
+      <text x="1054" y="264">用户确认后锁定</text>
+    </g>
+
+    <rect x="36" y="326" width="876" height="590" rx="16" fill="white" stroke="#E2E8F0"/>
+    <text x="60" y="366" font-size="22" font-weight="800" fill="#0F172A">需求文档草稿</text>
+    <g transform="translate(750 344)">
+      <rect width="122" height="30" rx="15" fill="#FEF9C3" stroke="#EAB308" stroke-opacity="0.2"/>
+      <circle cx="16" cy="15" r="4" fill="#EAB308"/>
+      <text x="28" y="20" font-size="12" font-weight="700" fill="#A16207">等待用户确认</text>
+    </g>
+    <rect x="60" y="392" width="828" height="302" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="84" y="430" font-size="15" font-weight="800" fill="#0F172A"># 多 Agent 工厂 MVP 需求</text>
+    <text x="84" y="470" font-size="14" fill="#475569">目标：用户提交任务后，模型层生成需求文档，用户可编辑或反馈给 Agent 修改。</text>
+    <text x="84" y="502" font-size="14" fill="#475569">确认后进入任务计划。每一步都必须明确责任 Agent、输入、输出和门禁。</text>
+    <text x="84" y="550" font-size="14" fill="#475569">核心原则：</text>
+    <text x="84" y="584" font-size="14" fill="#475569">1. 顶部固定 7 个步骤按钮，不再使用 4 栏结构。</text>
+    <text x="84" y="616" font-size="14" fill="#475569">2. 代码生成只产生可审查产物，不直接写真实项目文件。</text>
+    <text x="84" y="648" font-size="14" fill="#475569">3. 审查失败必须回流到责任 Agent。</text>
+    <rect x="60" y="726" width="186" height="42" rx="10" fill="white" stroke="#E2E8F0"/>
+    <text x="84" y="752" font-size="14" font-weight="700" fill="#2563EB">让 Agent 按意见修改</text>
+    <rect x="258" y="726" width="110" height="42" rx="10" fill="#2563EB"/>
+    <text x="283" y="752" font-size="14" font-weight="700" fill="white">确认需求</text>
+
+    <rect x="930" y="326" width="474" height="590" rx="16" fill="white" stroke="#E2E8F0"/>
+    <text x="954" y="366" font-size="20" font-weight="800" fill="#0F172A">反馈与版本</text>
+    <rect x="954" y="392" width="426" height="184" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="978" y="430" font-size="14" font-weight="700" fill="#475569">人工反馈</text>
+    <text x="978" y="466" font-size="14" fill="#475569">- 更像客户端工作台，不是普通网页仪表盘</text>
+    <text x="978" y="498" font-size="14" fill="#475569">- 顶部必须是 7 个步骤按钮</text>
+    <text x="978" y="530" font-size="14" fill="#475569">- 白色毛玻璃导航</text>
+    <text x="978" y="562" font-size="14" fill="#475569">- 状态色语义固定</text>
+    <rect x="954" y="604" width="184" height="92" rx="14" fill="#EFF6FF" stroke="#E2E8F0"/>
+    <text x="974" y="636" font-size="12" font-weight="700" fill="#64748B">当前版本</text>
+    <text x="974" y="674" font-size="26" font-weight="800" fill="#2563EB">v1.2</text>
+    <rect x="1160" y="604" width="184" height="92" rx="14" fill="#FEF9C3" stroke="#E2E8F0"/>
+    <text x="1180" y="636" font-size="12" font-weight="700" fill="#64748B">确认门禁</text>
+    <text x="1180" y="674" font-size="26" font-weight="800" fill="#A16207">未锁定</text>
+    <rect x="954" y="728" width="426" height="116" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="978" y="766" font-size="14" fill="#475569">需求确认页的重点是：用户可以直接改文档，也可以把意见交给 Agent 重写。</text>
+    <text x="978" y="800" font-size="14" fill="#475569">确认后版本锁定，才能进入计划确认。</text>
+  </g>
+</svg>
