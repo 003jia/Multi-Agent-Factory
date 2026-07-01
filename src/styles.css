@@ -767,7 +767,7 @@ pre {
 }
 
 .mcp-heading h3 {
-  color: var(--ink);
+  color: var(--text);
   font-size: 15px;
   margin: 0 0 4px;
 }
@@ -823,7 +823,7 @@ pre {
 
 .mcp-config-grid strong,
 .mcp-command strong {
-  color: var(--ink);
+  color: var(--text);
   font-size: 12px;
 }
 
@@ -846,6 +846,7 @@ pre {
   display: grid;
   gap: 4px;
 }
+
 
 .file-heading {
   align-items: center;
@@ -2275,16 +2276,74 @@ pre {
   background: #f9fafb;
 }
 
-.simple-settings {
-  margin-left: auto;
-  margin-right: 24px;
-  max-width: 720px;
-  position: relative;
-  z-index: 3;
+.settings-dialog-backdrop {
+  align-items: center;
+  background: rgba(17, 24, 39, 0.34);
+  backdrop-filter: blur(6px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
 }
 
-.simple-settings .settings-panel {
-  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.16);
+.settings-dialog {
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  position: relative;
+  width: min(760px, calc(100vw - 32px));
+}
+
+.settings-dialog .settings-panel {
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.24);
+  margin: 0;
+}
+
+.settings-dialog .section-heading {
+  padding-right: 44px;
+}
+
+.settings-dialog-close {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  color: #374151;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 34px;
+  z-index: 1;
+}
+
+.settings-dialog-close:hover {
+  background: #f9fafb;
+  color: #111827;
+}
+
+@media (max-width: 720px) {
+  .settings-dialog-backdrop {
+    align-items: flex-start;
+    padding: 16px;
+  }
+
+  .settings-dialog {
+    max-height: calc(100vh - 32px);
+    width: 100%;
+  }
+
+  .settings-dialog .model-grid,
+  .settings-dialog .settings-actions,
+  .settings-dialog .settings-model-row,
+  .mcp-meta-grid,
+  .mcp-config-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .simple-error {
@@ -3139,36 +3198,6 @@ pre {
   margin-bottom: 0;
 }
 
-.mock-placeholder-banner {
-  background: var(--warning-bg);
-  border: 1px solid #fde68a;
-  border-radius: 10px;
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-}
-
-.mock-placeholder-banner strong {
-  color: var(--warning);
-  font-size: 13px;
-}
-
-.mock-placeholder-banner span {
-  color: #92400e;
-  font-size: 12px;
-}
-
-.mock-file-tag {
-  background: var(--warning-bg);
-  border-radius: 6px;
-  color: var(--warning);
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  width: fit-content;
-}
-
 @media (max-width: 980px) {
   .task-detail-layout {
     grid-template-columns: 1fr;
@@ -3807,9 +3836,11 @@ pre {
 }
 
 .forge-town-svg {
+  aspect-ratio: 1190 / 250;
   display: block;
-  height: 118px;
+  height: auto;
   margin-top: 4px;
+  overflow: visible;
   width: 100%;
 }
 
@@ -3875,49 +3906,40 @@ pre {
   stroke: #f59133;
 }
 
-.forge-stage-labels {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-top: -8px;
-  padding: 0 6px;
+.town-stage-label {
+  pointer-events: none;
 }
 
-.forge-stage-labels > div {
-  align-items: center;
-  color: #52504a;
-  display: grid;
-  gap: 7px;
-  justify-items: center;
-  text-align: center;
+.town-stage-index-ring {
+  fill: #ffffff;
+  stroke: #b3aea4;
+  stroke-width: 1.5;
 }
 
-.forge-stage-labels span {
-  align-items: center;
-  border: 1.5px solid #b3aea4;
-  border-radius: 999px;
-  color: #8b867b;
-  display: inline-flex;
+.town-step.active .town-stage-index-ring {
+  stroke: #e0703c;
+}
+
+.town-stage-index-text {
+  fill: #8b867b;
   font-size: 11px;
   font-weight: 900;
-  height: 20px;
-  justify-content: center;
-  width: 20px;
 }
 
-.forge-stage-labels .active span {
-  border-color: #e0703c;
-  color: #e0703c;
+.town-step.active .town-stage-index-text {
+  fill: #e0703c;
 }
 
-.forge-stage-labels strong {
-  color: #33332e;
-  font-size: 13px;
+.town-stage-name {
+  fill: #33332e;
+  font-size: 14px;
+  font-weight: 800;
 }
 
-.forge-stage-labels small {
-  color: #a3a097;
-  font-size: 11px;
+.town-stage-caption {
+  fill: #a3a097;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .forge-command-main {
@@ -4285,7 +4307,6 @@ pre {
 
   .forge-fire-metrics,
   .forge-day-metrics,
-  .forge-stage-labels,
   .forge-template-grid {
     grid-template-columns: 1fr;
   }
@@ -4300,24 +4321,6 @@ pre {
     border-top: 0;
   }
 
-  .forge-town-svg {
-    display: none;
-  }
-
-  .forge-stage-labels {
-    margin-top: 8px;
-  }
-
-  .forge-stage-labels > div {
-    align-items: center;
-    grid-template-columns: auto minmax(0, 1fr);
-    justify-items: start;
-    text-align: left;
-  }
-
-  .forge-stage-labels small {
-    grid-column: 2;
-  }
 
   .forge-queue-heading {
     align-items: flex-start;

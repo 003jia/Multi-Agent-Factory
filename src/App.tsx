@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "./api";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { StatusBadge } from "./components/StatusBadge";
@@ -14,6 +15,8 @@ const forgeSteps = [
   { id: "review", name: "审查塔", caption: "执行明细" },
   { id: "submit", name: "提交仓", caption: "代码产物与审查" }
 ] as const;
+
+const forgeStepX = [150, 390, 630, 870, 1110] as const;
 
 const taskTemplates = [
   {
@@ -87,6 +90,22 @@ export function App() {
   useEffect(() => {
     void refresh(undefined, false);
   }, []);
+
+  useEffect(() => {
+    if (!showSettings) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowSettings(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showSettings]);
 
   const loadAiStatus = async (): Promise<AiStatus> => {
     if (window.desktop) return window.desktop.getAiStatus();
@@ -241,30 +260,23 @@ export function App() {
         </button>
         <div className="simple-topbar-actions">
           {aiStatus && <span className={`simple-mode ${aiStatus.aiEnabled ? "online" : "offline"}`}>{aiStatus.mode}</span>}
-          <button className="simple-icon-button" aria-label="模型设置" onClick={() => setShowSettings((value) => !value)} type="button">
-            <SettingsIcon />
-          </button>
         </div>
       </header>
 
       {showSettings && (
-        <div className="simple-settings">
+        <SettingsDialog onClose={() => setShowSettings(false)}>
           <SettingsPanel status={aiStatus} onStatusChange={setAiStatus} />
-        </div>
+        </SettingsDialog>
       )}
 
       {error && <div className="simple-error">{error}</div>}
 
       {bundle ? (
         <TaskDetail
-          aiStatus={aiStatus}
           bundle={bundle}
           busy={busy}
           onApply={async () => {
             await runTaskOperation(() => api.apply(bundle.task.id));
-          }}
-          onSubmit={async () => {
-            await runTaskOperation(() => api.submit(bundle.task.id));
           }}
           onBackHome={resetToHome}
           onConfirmPlan={async (content, feedback) => {
@@ -281,6 +293,9 @@ export function App() {
           }}
           onReview={async () => {
             await runTaskOperation(() => api.runReview(bundle.task.id));
+          }}
+          onSubmit={async () => {
+            await runTaskOperation(() => api.submit(bundle.task.id));
           }}
           openErrors={openErrors.length}
           subagents={snapshot.subagents}
@@ -319,6 +334,25 @@ export function App() {
           tasks={snapshot.tasks}
         />
       )}
+    </div>
+  );
+}
+
+function SettingsDialog({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="settings-dialog-backdrop" onMouseDown={onClose}>
+      <div
+        aria-label="添加模型 API Key"
+        aria-modal="true"
+        className="settings-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <button className="settings-dialog-close" aria-label="关闭添加模型" onClick={onClose} type="button">
+          <CloseIcon />
+        </button>
+        {children}
+      </div>
     </div>
   );
 }
@@ -507,7 +541,7 @@ function ForgeFireStatus({ aiStatus, onOpenSettings }: { aiStatus: AiStatus | nu
         </div>
       </div>
       <button className="secondary-button" onClick={onOpenSettings} type="button">
-        接入模型
+        添加模型
       </button>
     </article>
   );
@@ -530,7 +564,7 @@ function ForgeDaySummary({ completed, errors, running, waiting }: { completed: n
 function ForgeTownMap() {
   return (
     <div className="forge-town-map">
-      <svg className="forge-town-svg" viewBox="0 0 1190 210" role="img" aria-label="需求炉到提交仓的炼制路线">
+      <svg className="forge-town-svg" viewBox="0 0 1190 250" role="img" aria-label={forgeSteps.map((step) => step.name).join("\u5230")}>
         <defs>
           <g id="forge-building">
             <polygon points="-44,24 0,46 0,-6 -44,-28" />
@@ -539,40 +573,42 @@ function ForgeTownMap() {
             <polygon points="0,-58 44,-28 0,-6" />
           </g>
         </defs>
-        <polyline className="mountain-line strong" points="0,74 110,36 190,58 310,22 430,54 548,30 680,60 820,28 960,56 1080,34 1190,62" />
-        <polyline className="mountain-line" points="60,82 198,52 340,78 470,50 620,80 760,52 900,78 1040,56 1190,78" />
-        <path className="town-road-base" d="M28,162 C140,162 150,146 250,142 C360,138 360,160 470,156 C580,154 560,140 660,140 C770,140 760,158 880,156 C1000,154 1010,142 1120,142 L1170,142" />
-        <path className="town-road-dash" d="M28,162 C140,162 150,146 250,142 C360,138 360,160 470,156 C580,154 560,140 660,140 C770,140 760,158 880,156 C1000,154 1010,142 1120,142 L1170,142" />
-        {forgeSteps.map((step, index) => (
-          <g className={`town-building ${index === 0 ? "active" : ""}`} key={step.id} transform={`translate(${150 + index * 240},128)`}>
-            <ellipse cx="0" cy="52" rx="62" ry="17" />
-            <use href="#forge-building" />
-            {index === 0 && (
-              <>
-                <g transform="translate(20,-46)">
-                  <polygon points="-10,8 0,14 0,-28 -10,-34" />
-                  <polygon points="10,8 0,14 0,-28 10,-34" />
-                  <polygon points="0,-42 10,-34 0,-28 -10,-34" />
-                </g>
-                <circle cx="5" cy="18" r="12" />
-                <circle cx="5" cy="18" r="7" />
-              </>
-            )}
-            {index === 1 && <circle cx="-72" cy="-10" r="12" />}
-            {index === 3 && <circle cx="22" cy="-6" r="10" />}
-            {index === 4 && <path d="M10,38 L10,10 q0,-9 13,-9 q13,0 13,9 L36,30 Z" />}
-          </g>
-        ))}
+        <polyline className="mountain-line strong" points="0,70 110,32 190,54 310,18 430,50 548,26 680,56 820,24 960,52 1080,30 1190,58" />
+        <polyline className="mountain-line" points="60,78 198,48 340,74 470,46 620,76 760,48 900,74 1040,52 1190,74" />
+        <path className="town-road-base" d="M28,146 C140,146 150,130 250,126 C360,122 360,144 470,140 C580,138 560,124 660,124 C770,124 760,142 880,140 C1000,138 1010,126 1120,126 L1170,126" />
+        <path className="town-road-dash" d="M28,146 C140,146 150,130 250,126 C360,122 360,144 470,140 C580,138 560,124 660,124 C770,124 760,142 880,140 C1000,138 1010,126 1120,126 L1170,126" />
+        {forgeSteps.map((step, index) => {
+          const x = forgeStepX[index];
+          return (
+            <g className={`town-step ${index === 0 ? "active" : ""}`} key={step.id} transform={`translate(${x},0)`}>
+              <g className={`town-building ${index === 0 ? "active" : ""}`} transform="translate(0,112)">
+                <ellipse cx="0" cy="52" rx="62" ry="17" />
+                <use href="#forge-building" />
+                {index === 0 && (
+                  <>
+                    <g transform="translate(20,-46)">
+                      <polygon points="-10,8 0,14 0,-28 -10,-34" />
+                      <polygon points="10,8 0,14 0,-28 10,-34" />
+                      <polygon points="0,-42 10,-34 0,-28 -10,-34" />
+                    </g>
+                    <circle cx="5" cy="18" r="12" />
+                    <circle cx="5" cy="18" r="7" />
+                  </>
+                )}
+                {index === 1 && <circle cx="-72" cy="-10" r="12" />}
+                {index === 3 && <circle cx="22" cy="-6" r="10" />}
+                {index === 4 && <path d="M10,38 L10,10 q0,-9 13,-9 q13,0 13,9 L36,30 Z" />}
+              </g>
+              <g className="town-stage-label" transform="translate(0,184)">
+                <circle className="town-stage-index-ring" cx="0" cy="0" r="11" />
+                <text className="town-stage-index-text" x="0" y="4" textAnchor="middle">{index + 1}</text>
+                <text className="town-stage-name" x="0" y="33" textAnchor="middle">{step.name}</text>
+                <text className="town-stage-caption" x="0" y="56" textAnchor="middle">{step.caption}</text>
+              </g>
+            </g>
+          );
+        })}
       </svg>
-      <div className="forge-stage-labels">
-        {forgeSteps.map((step, index) => (
-          <div className={index === 0 ? "active" : ""} key={step.id}>
-            <span>{index + 1}</span>
-            <strong>{step.name}</strong>
-            <small>{step.caption}</small>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -774,7 +810,6 @@ function ProjectBindingBar({
 }
 
 function TaskDetail({
-  aiStatus,
   bundle,
   busy,
   onApply,
@@ -788,7 +823,6 @@ function TaskDetail({
   openErrors,
   subagents
 }: {
-  aiStatus: AiStatus | null;
   bundle: TaskBundle;
   busy: boolean;
   onApply: () => Promise<void>;
@@ -869,7 +903,6 @@ function TaskDetail({
             subagents={subagents}
           />
           <ResultStageCard
-            aiStatus={aiStatus}
             bundle={bundle}
             current={currentCard === "result"}
             expanded={expandedCards.has("result")}
@@ -1144,7 +1177,6 @@ function ExecutionStageCard({
 }
 
 function ResultStageCard({
-  aiStatus,
   bundle,
   current,
   expanded,
@@ -1154,7 +1186,6 @@ function ResultStageCard({
   onSubmit,
   onToggle
 }: {
-  aiStatus: AiStatus | null;
   bundle: TaskBundle;
   current: boolean;
   expanded: boolean;
@@ -1164,7 +1195,6 @@ function ResultStageCard({
   onSubmit: () => Promise<void>;
   onToggle: () => void;
 }) {
-  const isMock = !aiStatus?.aiEnabled;
   const openError = bundle.findings.find((finding) => finding.status === "open" && finding.severity === "error");
   const hasArtifacts = bundle.artifacts.length > 0;
   const reviewed = bundle.findings.length > 0 || bundle.task.stage === "review" || bundle.task.stage === "submitted";
@@ -1199,12 +1229,6 @@ function ResultStageCard({
     >
       {hasArtifacts ? (
         <div className="result-summary">
-          {isMock && (
-            <div className="mock-placeholder-banner" role="status">
-              <strong>当前为 Mock 演示内容</strong>
-              <span>未接入真实模型，以下文件是占位模板，不是针对本任务生成的真实代码。接入 API Key 后重新生成即可得到真实产物。</span>
-            </div>
-          )}
           <div className="result-kpis">
             <span><strong>{fileCount}</strong> 文件变更</span>
             <span><strong>{bundle.findings.length}</strong> 审查记录</span>
@@ -1212,7 +1236,7 @@ function ResultStageCard({
           </div>
           <div className="result-file-list">
             {bundle.artifacts.map((artifact) => (
-              <ArtifactSummary artifact={artifact} isMock={isMock} key={artifact.id} />
+              <ArtifactSummary artifact={artifact} key={artifact.id} />
             ))}
           </div>
           <details className="collapsed-detail">
@@ -1234,18 +1258,17 @@ function ResultStageCard({
   );
 }
 
-function ArtifactSummary({ artifact, isMock }: { artifact: GeneratedArtifact; isMock: boolean }) {
+function ArtifactSummary({ artifact }: { artifact: GeneratedArtifact }) {
   return (
     <article className="artifact-summary">
       <strong>{artifact.commitMessageDraft}</strong>
       <p>{artifact.agentNotes}</p>
       <details>
-        <summary>{artifact.files.length} 个文件{isMock ? "（Mock 占位）" : ""}</summary>
+        <summary>{artifact.files.length} 个文件</summary>
         {artifact.files.map((file) => (
           <div className="artifact-file-summary" key={file.path}>
             <code>{file.path}</code>
             <small>{file.summary}</small>
-            {isMock && <span className="mock-file-tag">占位模板，非真实生成内容</span>}
             <details>
               <summary>查看内容和 diff</summary>
               <pre className="file-content">{file.content || "暂无完整文件内容"}</pre>
@@ -1402,23 +1425,10 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function SettingsIcon() {
+function CloseIcon() {
   return (
     <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
-      <path
-        d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a1.9 1.9 0 0 1-2.7 2.7l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a1.9 1.9 0 0 1-3.8 0v-.2a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a1.9 1.9 0 0 1-2.7-2.7l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3.5a1.9 1.9 0 0 1 0-3.8h.2a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a1.9 1.9 0 0 1 2.7-2.7l.1.1a1.6 1.6 0 0 0 1.8.3 1.6 1.6 0 0 0 1-1.5V3a1.9 1.9 0 0 1 3.8 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a1.9 1.9 0 0 1 2.7 2.7l-.1.1a1.6 1.6 0 0 0-.3 1.8 1.6 1.6 0 0 0 1.5 1h.2a1.9 1.9 0 0 1 0 3.8h-.2a1.6 1.6 0 0 0-1.5 1Z"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
+      <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
     </svg>
   );
 }
