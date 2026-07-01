@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
-import type { AiProvider, AiStatus } from "../types";
+import type { AiConfigAuditResult, AiProvider, AiProviderConfigInput, AiStatus } from "../types";
 
 interface SettingsPanelProps {
   status: AiStatus | null;
@@ -15,7 +15,9 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
   const [qualityModel, setQualityModel] = useState("");
   const [masked, setMasked] = useState<string | undefined>();
   const [message, setMessage] = useState<string | null>(null);
-  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+  const [messageTone, setMessageTone] = useState<"success" | "warning" | "error">("success");
+  const [auditResult, setAuditResult] = useState<AiConfigAuditResult | null>(null);
+  const [auditBusy, setAuditBusy] = useState(false);
   const desktopAvailable = Boolean(window.desktop);
 
   useEffect(() => {
@@ -38,21 +40,32 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
     event.preventDefault();
     try {
       const saveConfig = window.desktop ? window.desktop.setAiConfig : api.setAiConfig;
-      const nextStatus = await saveConfig({
-        provider,
-        apiKey: apiKey.trim() || undefined,
-        baseUrl: baseUrl.trim() || undefined,
-        economyModel: economyModel.trim() || undefined,
-        qualityModel: qualityModel.trim() || undefined
-      });
+      const nextStatus = await saveConfig(buildDraftConfig());
       onStatusChange(nextStatus);
       setMasked(nextStatus.keyMasked);
       setApiKey("");
+      setAuditResult(null);
       setMessageTone("success");
       setMessage(nextStatus.aiEnabled ? `${providerName(provider)} 已启用` : "配置已保存；未设置 API Key 时继续使用 Mock 模式");
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "保存模型 API Key 失败");
+    }
+  };
+
+  const auditKey = async () => {
+    try {
+      setAuditBusy(true);
+      const auditConfig = window.desktop ? window.desktop.auditAiConfig : api.auditAiConfig;
+      const result = await auditConfig(buildDraftConfig());
+      setAuditResult(result);
+      setMessageTone(result.status === "failed" ? "error" : result.status === "warning" ? "warning" : "success");
+      setMessage(result.status === "failed" ? "API Key 审查未通过" : result.status === "warning" ? "API Key 审查有提示项" : "API Key 审查通过");
+    } catch (error) {
+      setMessageTone("error");
+      setMessage(error instanceof Error ? error.message : "API Key 审查失败");
+    } finally {
+      setAuditBusy(false);
     }
   };
 
@@ -69,6 +82,7 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
       onStatusChange(nextStatus);
       setMasked(undefined);
       setApiKey("");
+      setAuditResult(null);
       setMessageTone("success");
       setMessage("API Key 已清除，当前使用 Mock 模式");
     } catch (error) {
@@ -162,13 +176,50 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
           <button className="primary-button" type="submit">
             保存 API Key
           </button>
+          <button className="secondary-button" disabled={auditBusy} onClick={auditKey} type="button">
+            {auditBusy ? "审查中" : "审查 API Key"}
+          </button>
           <button className="secondary-button" disabled={!masked && !apiKey} onClick={clearKey} type="button">
             清除 Key
           </button>
         </div>
-        {message && <p className={`${messageTone === "success" ? "success-text" : "danger-text"} settings-message`}>{message}</p>}
+        {auditResult && <AuditResult result={auditResult} />}
+        {message && <p className={`${messageTone === "success" ? "success-text" : messageTone === "warning" ? "warning-text" : "danger-text"} settings-message`}>{message}</p>}
       </form>
     </section>
+  );
+
+  function buildDraftConfig(): AiProviderConfigInput {
+    return {
+      provider,
+      apiKey: apiKey.trim() || undefined,
+      baseUrl: baseUrl.trim() || undefined,
+      economyModel: economyModel.trim() || undefined,
+      qualityModel: qualityModel.trim() || undefined
+    };
+  }
+}
+
+function AuditResult({ result }: { result: AiConfigAuditResult }) {
+  const tone = result.status === "passed" ? "passed" : result.status === "warning" ? "running" : "failed";
+  return (
+    <div className={`api-key-audit audit-${result.status}`}>
+      <div className="api-key-audit-heading">
+        <div>
+          <strong>{result.status === "passed" ? "审查通过" : result.status === "warning" ? "需要确认" : "审查未通过"}</strong>
+          <span>{result.keyMasked ? `Key ${result.keyMasked}` : "未检测到可用 Key"}</span>
+        </div>
+        <span className={`status-badge status-${tone}`}>{result.canUseRealModel ? "可启用" : "不可启用"}</span>
+      </div>
+      <div className="api-key-audit-list">
+        {result.items.map((item) => (
+          <div className={`api-key-audit-item item-${item.severity}`} key={item.id}>
+            <strong>{item.title}</strong>
+            <span>{item.message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

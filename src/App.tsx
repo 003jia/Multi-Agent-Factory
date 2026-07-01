@@ -257,10 +257,14 @@ export function App() {
 
       {bundle ? (
         <TaskDetail
+          aiStatus={aiStatus}
           bundle={bundle}
           busy={busy}
-          onApplyOrSubmit={async () => {
+          onApply={async () => {
             await runTaskOperation(() => api.apply(bundle.task.id));
+          }}
+          onSubmit={async () => {
+            await runTaskOperation(() => api.submit(bundle.task.id));
           }}
           onBackHome={resetToHome}
           onConfirmPlan={async (content, feedback) => {
@@ -770,27 +774,31 @@ function ProjectBindingBar({
 }
 
 function TaskDetail({
+  aiStatus,
   bundle,
   busy,
-  onApplyOrSubmit,
+  onApply,
   onBackHome,
   onConfirmPlan,
   onConfirmRequirements,
   onGenerate,
   onReopen,
   onReview,
+  onSubmit,
   openErrors,
   subagents
 }: {
+  aiStatus: AiStatus | null;
   bundle: TaskBundle;
   busy: boolean;
-  onApplyOrSubmit: () => Promise<void>;
+  onApply: () => Promise<void>;
   onBackHome: () => void;
   onConfirmPlan: (content: string, feedback: string) => Promise<void>;
   onConfirmRequirements: (content: string, feedback: string) => Promise<void>;
   onGenerate: () => Promise<void>;
   onReopen: (findingId: string) => Promise<void>;
   onReview: () => Promise<void>;
+  onSubmit: () => Promise<void>;
   openErrors: number;
   subagents: Subagent[];
 }) {
@@ -861,12 +869,14 @@ function TaskDetail({
             subagents={subagents}
           />
           <ResultStageCard
+            aiStatus={aiStatus}
             bundle={bundle}
             current={currentCard === "result"}
             expanded={expandedCards.has("result")}
-            onApplyOrSubmit={onApplyOrSubmit}
+            onApply={onApply}
             onReopen={onReopen}
             onReview={onReview}
+            onSubmit={onSubmit}
             onToggle={() => toggleCard("result")}
           />
         </div>
@@ -1134,22 +1144,27 @@ function ExecutionStageCard({
 }
 
 function ResultStageCard({
+  aiStatus,
   bundle,
   current,
   expanded,
-  onApplyOrSubmit,
+  onApply,
   onReopen,
   onReview,
+  onSubmit,
   onToggle
 }: {
+  aiStatus: AiStatus | null;
   bundle: TaskBundle;
   current: boolean;
   expanded: boolean;
-  onApplyOrSubmit: () => Promise<void>;
+  onApply: () => Promise<void>;
   onReopen: (findingId: string) => Promise<void>;
   onReview: () => Promise<void>;
+  onSubmit: () => Promise<void>;
   onToggle: () => void;
 }) {
+  const isMock = !aiStatus?.aiEnabled;
   const openError = bundle.findings.find((finding) => finding.status === "open" && finding.severity === "error");
   const hasArtifacts = bundle.artifacts.length > 0;
   const reviewed = bundle.findings.length > 0 || bundle.task.stage === "review" || bundle.task.stage === "submitted";
@@ -1163,7 +1178,11 @@ function ResultStageCard({
       return <button className="primary-button" onClick={() => onReopen(openError.id)} type="button">回流修复</button>;
     }
     if (bundle.task.stage === "review" && reviewed) {
-      return <button className="primary-button" onClick={onApplyOrSubmit} type="button">{bundle.project ? "应用到项目" : "形成提交记录"}</button>;
+      const projectApplied = bundle.project && bundle.patchSets.length > 0 && bundle.patchSets.every((patchSet) => patchSet.applyStatus === "applied");
+      if (bundle.project && !projectApplied) {
+        return <button className="primary-button" onClick={onApply} type="button">应用到项目</button>;
+      }
+      return <button className="primary-button" onClick={onSubmit} type="button">{bundle.project ? "生成提交记录" : "形成提交记录"}</button>;
     }
     return null;
   })();
@@ -1180,6 +1199,12 @@ function ResultStageCard({
     >
       {hasArtifacts ? (
         <div className="result-summary">
+          {isMock && (
+            <div className="mock-placeholder-banner" role="status">
+              <strong>当前为 Mock 演示内容</strong>
+              <span>未接入真实模型，以下文件是占位模板，不是针对本任务生成的真实代码。接入 API Key 后重新生成即可得到真实产物。</span>
+            </div>
+          )}
           <div className="result-kpis">
             <span><strong>{fileCount}</strong> 文件变更</span>
             <span><strong>{bundle.findings.length}</strong> 审查记录</span>
@@ -1187,7 +1212,7 @@ function ResultStageCard({
           </div>
           <div className="result-file-list">
             {bundle.artifacts.map((artifact) => (
-              <ArtifactSummary artifact={artifact} key={artifact.id} />
+              <ArtifactSummary artifact={artifact} isMock={isMock} key={artifact.id} />
             ))}
           </div>
           <details className="collapsed-detail">
@@ -1209,17 +1234,18 @@ function ResultStageCard({
   );
 }
 
-function ArtifactSummary({ artifact }: { artifact: GeneratedArtifact }) {
+function ArtifactSummary({ artifact, isMock }: { artifact: GeneratedArtifact; isMock: boolean }) {
   return (
     <article className="artifact-summary">
       <strong>{artifact.commitMessageDraft}</strong>
       <p>{artifact.agentNotes}</p>
       <details>
-        <summary>{artifact.files.length} 个文件</summary>
+        <summary>{artifact.files.length} 个文件{isMock ? "（Mock 占位）" : ""}</summary>
         {artifact.files.map((file) => (
           <div className="artifact-file-summary" key={file.path}>
             <code>{file.path}</code>
             <small>{file.summary}</small>
+            {isMock && <span className="mock-file-tag">占位模板，非真实生成内容</span>}
             <details>
               <summary>查看内容和 diff</summary>
               <pre className="file-content">{file.content || "暂无完整文件内容"}</pre>

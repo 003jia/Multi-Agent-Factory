@@ -17,7 +17,7 @@ export type ReviewSeverity = "info" | "warning" | "error";
 export type ReviewSource = "static" | "model" | "test" | "apply";
 export type RiskLevel = "low" | "medium" | "high";
 export type FileChangeKind = "create" | "modify" | "delete";
-export type PatchApplyStatus = "pending" | "verified" | "blocked" | "applied";
+export type PatchApplyStatus = "pending" | "verified" | "blocked" | "applied" | "failed";
 
 export interface ProjectWorkspace {
   id: string;
@@ -258,6 +258,22 @@ export interface AiProviderConfigView {
   qualityModel?: string;
   keyMasked?: string;
   hasApiKey: boolean;
+}
+
+export interface AiConfigAuditItem {
+  id: string;
+  severity: ReviewSeverity;
+  title: string;
+  message: string;
+}
+
+export interface AiConfigAuditResult {
+  status: "passed" | "warning" | "failed";
+  provider: AiProvider;
+  keyMasked?: string;
+  canUseRealModel: boolean;
+  items: AiConfigAuditItem[];
+  reviewedAt: string;
 }
 
 export interface AiStatus {

@@ -6,9 +6,10 @@ import { scanProjectWorkspace } from "../server/projectWorkspace";
 import {
   applyPatchSetToProject,
   createPatchSetFromArtifact,
-  normalizeProjectRelativePath
+  normalizeProjectRelativePath,
+  verifyPatchSetInSandbox
 } from "../server/runtime/projectPatch";
-import type { GeneratedArtifact, ProjectWorkspace } from "../src/types";
+import type { GeneratedArtifact, ProjectWorkspace, Subagent, WorkItem } from "../src/types";
 
 let tempDir: string | null = null;
 
@@ -69,10 +70,56 @@ describe("project workspace and patch safety", () => {
     expect(() => applyPatchSetToProject(project, [patchSet])).toThrow("hash 校验失败");
   });
 
+  it("blocks apply when the scanned project is dirty", () => {
+    const project = { ...makeProject(), gitStatus: "dirty" as const };
+    const patchSet = createPatchSetFromArtifact(project, artifact(project));
+
+    expect(() => applyPatchSetToProject(project, [patchSet])).toThrow("未提交变更");
+  });
+
   it("applies a verified patch set to the project", () => {
     const project = makeProject();
     const patchSet = createPatchSetFromArtifact(project, artifact(project));
     applyPatchSetToProject(project, [patchSet]);
     expect(readFileSync(join(project.rootPath, "src.ts"), "utf8")).toContain("value = 2");
+  });
+
+  it("only runs allowed project script keys during sandbox verification", () => {
+    const project = makeProject();
+    const generated = artifact(project);
+    const patchSet = createPatchSetFromArtifact(project, generated);
+    const workItem: WorkItem = {
+      id: generated.workItemId,
+      taskId: generated.taskId,
+      title: "验证脚本白名单",
+      description: "不执行任意 shell 命令",
+      targetFiles: ["src.ts"],
+      dependencies: [],
+      acceptanceChecks: [],
+      riskLevel: "low",
+      verificationCommands: ["node -e \"process.exit(1)\"", "typecheck"],
+      complexity: 3,
+      preferredModelTier: "economy",
+      status: "generated",
+      assignedSubagentId: generated.subagentId
+    };
+    const subagent: Subagent = {
+      id: generated.subagentId,
+      name: "测试 Agent",
+      role: "验证",
+      skills: ["测试"],
+      enabled: true,
+      costTier: "low",
+      qualityTier: "standard",
+      defaultModelTier: "economy",
+      concurrencyLimit: 1,
+      activeAssignments: 0
+    };
+
+    const result = verifyPatchSetInSandbox(project, patchSet, generated, workItem, subagent);
+
+    expect(result.ok).toBe(true);
+    expect(result.verificationLog).toContain("$ npm run typecheck");
+    expect(result.verificationLog).not.toContain("node -e \"process.exit(1)\"");
   });
 });

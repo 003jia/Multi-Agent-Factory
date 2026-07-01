@@ -26,11 +26,14 @@ import {
   createPatchSetFromArtifact,
   verifyPatchSetInSandbox
 } from "./runtime/projectPatch.js";
+import { AppError } from "./errors.js";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().slice(0, 10)}`;
 
 export class WorkflowService {
+  private taskLocks = new Set<string>();
+
   constructor(private repo: FactoryRepository, private engine: AgentEngine) {}
 
   setEngine(engine: AgentEngine) {
@@ -47,7 +50,7 @@ export class WorkflowService {
 
   projectContext(projectId: string) {
     const project = this.repo.getProject(projectId);
-    if (!project) throw new Error("项目不存在");
+    if (!project) throw new AppError("NOT_FOUND", "项目不存在", 404);
     return {
       project,
       files: listProjectContextFiles(project.rootPath)
@@ -86,7 +89,7 @@ export class WorkflowService {
 
   async updateRequirements(taskId: string, content: string, feedback: string) {
     const task = this.requireTask(taskId);
-    if (task.stage !== "requirements_review") throw new Error("当前阶段不能修改需求文档");
+    if (task.stage !== "requirements_review") throw new AppError("INVALID_STAGE", "当前阶段不能修改需求文档", 409);
     if (feedback.trim()) {
       this.repo.saveRequirements({
         id: id("doc"),
@@ -106,7 +109,7 @@ export class WorkflowService {
 
   async confirmRequirements(taskId: string, content: string, feedback = "") {
     const task = this.requireTask(taskId);
-    if (task.stage !== "requirements_review") throw new Error("需求只能在需求确认阶段确认");
+    if (task.stage !== "requirements_review") throw new AppError("INVALID_STAGE", "需求只能在需求确认阶段确认", 409);
     this.repo.updateRequirements(taskId, content, feedback, true);
     const refreshed = this.requireTask(taskId);
     this.repo.savePlan({
@@ -123,7 +126,7 @@ export class WorkflowService {
 
   async updatePlan(taskId: string, content: string, feedback: string) {
     const task = this.requireTask(taskId);
-    if (task.stage !== "plan_review") throw new Error("当前阶段不能修改任务计划");
+    if (task.stage !== "plan_review") throw new AppError("INVALID_STAGE", "当前阶段不能修改任务计划", 409);
     if (feedback.trim()) {
       this.repo.savePlan({
         id: id("plan"),
@@ -142,7 +145,7 @@ export class WorkflowService {
 
   async confirmPlan(taskId: string, content: string, feedback = "") {
     const task = this.requireTask(taskId);
-    if (task.stage !== "plan_review") throw new Error("计划只能在计划确认阶段确认");
+    if (task.stage !== "plan_review") throw new AppError("INVALID_STAGE", "计划只能在计划确认阶段确认", 409);
     this.repo.updatePlan(taskId, content, feedback, true);
     const items = await this.engine.splitWorkItems(task, content);
     const subagents = this.repo.listSubagents();
@@ -155,7 +158,7 @@ export class WorkflowService {
         dependencies: item.dependencies ?? [],
         acceptanceChecks: item.acceptanceChecks?.length ? item.acceptanceChecks : ["静态校验通过", "无开放 error finding"],
         riskLevel: item.riskLevel ?? riskFor(item.complexity),
-        verificationCommands: item.verificationCommands ?? verificationCommandsFor(this.repo.getProject(task.projectId)),
+        verificationCommands: verificationCommandsFor(this.repo.getProject(task.projectId), item.verificationCommands),
         status: "assigned" as const,
         assignedSubagentId: assignment?.subagentId ?? null
       };
@@ -168,10 +171,10 @@ export class WorkflowService {
 
   updateAssignment(workItemId: string, subagentId: string, modelTier?: ModelTier) {
     const subagent = this.repo.getSubagent(subagentId);
-    if (!subagent || !subagent.enabled) throw new Error("目标 subagent 不存在或未启用");
+    if (!subagent || !subagent.enabled) throw new AppError("VALIDATION_ERROR", "目标 subagent 不存在或未启用", 400);
     const task = this.findTaskByWorkItem(workItemId);
     const workItem = this.repo.listWorkItems(task.id).find((item) => item.id === workItemId);
-    if (!workItem) throw new Error("work item 不存在");
+    if (!workItem) throw new AppError("NOT_FOUND", "work item 不存在", 404);
     const route = chooseModelTier({
       stage: "generation",
       complexity: workItem.complexity,
@@ -212,102 +215,145 @@ export class WorkflowService {
   }
 
   async runGeneration(taskId: string) {
-    const task = this.requireTask(taskId);
-    if (task.stage !== "assignment" && task.stage !== "generation" && task.stage !== "revision") {
-      throw new Error("只能在任务分派后执行代码生成");
-    }
-    const isRevisionPass = task.stage === "revision";
-    // 回流重生成时，把上一轮真实校验/审查的错误作为上下文喂回生成，形成闭环。
-    const errorContextByWorkItem = isRevisionPass ? this.collectOpenErrorContext(taskId) : new Map<string, string>();
-    if (isRevisionPass) this.repo.resolveOpenFindings(taskId);
-    const workItems = this.repo.listWorkItems(taskId);
-    const assignments = this.repo.listAssignments(taskId);
-    const artifacts = await Promise.all(workItems.map(async (workItem) => {
-      const assignment = assignments.find((item) => item.workItemId === workItem.id);
-      if (!assignment) throw new Error(`${workItem.title} 缺少分派`);
-      const subagent = this.repo.getSubagent(assignment.subagentId);
-      if (!subagent) throw new Error(`${workItem.title} 的 subagent 不存在`);
-      this.repo.setWorkItemAssignment(workItem.id, subagent.id, "generated");
-      return this.engine.generateArtifact(task, workItem, assignment, subagent, errorContextByWorkItem.get(workItem.id));
-    }));
+    return this.withTaskLockAsync(taskId, async () => {
+      const task = this.requireTask(taskId);
+      if (task.stage !== "assignment" && task.stage !== "generation" && task.stage !== "revision") {
+        throw new AppError("INVALID_STAGE", "只能在任务分派后执行代码生成", 409);
+      }
+      const isRevisionPass = task.stage === "revision";
+      // 回流重生成时，把上一轮真实校验/审查的错误作为上下文喂回生成，形成闭环。
+      const errorContextByWorkItem = isRevisionPass ? this.collectOpenErrorContext(taskId) : new Map<string, string>();
+      if (isRevisionPass) this.repo.resolveOpenFindings(taskId);
+      const workItems = this.repo.listWorkItems(taskId);
+      const assignments = this.repo.listAssignments(taskId);
+      const artifacts = await Promise.all(workItems.map(async (workItem) => {
+        const assignment = assignments.find((item) => item.workItemId === workItem.id);
+        if (!assignment) throw new AppError("APPLY_BLOCKED", `${workItem.title} 缺少分派`, 409);
+        const subagent = this.repo.getSubagent(assignment.subagentId);
+        if (!subagent) throw new AppError("APPLY_BLOCKED", `${workItem.title} 的 subagent 不存在`, 409);
+        this.repo.setWorkItemAssignment(workItem.id, subagent.id, "generated");
+        return this.engine.generateArtifact(task, workItem, assignment, subagent, errorContextByWorkItem.get(workItem.id));
+      }));
 
-    this.repo.saveArtifacts(artifacts);
-    const project = this.repo.getProject(task.projectId);
-    const patchSets = artifacts.map((artifact) => createPatchSetFromArtifact(project, artifact));
-    this.repo.savePatchSets(patchSets);
-    for (const patchSet of patchSets) this.repo.setArtifactPatchSet(patchSet.artifactId, patchSet.id);
-    this.repo.updateTaskStage(taskId, "generation", "running");
-    this.refreshCanvas(taskId);
-    return this.repo.getBundle(taskId);
+      this.repo.saveArtifacts(artifacts);
+      const project = this.repo.getProject(task.projectId);
+      const patchSets = artifacts.map((artifact) => createPatchSetFromArtifact(project, artifact));
+      this.repo.savePatchSets(patchSets);
+      for (const patchSet of patchSets) this.repo.setArtifactPatchSet(patchSet.artifactId, patchSet.id);
+      this.repo.updateTaskStage(taskId, "generation", "running");
+      this.refreshCanvas(taskId);
+      return this.repo.getBundle(taskId);
+    });
   }
 
   async runReview(taskId: string) {
-    const task = this.requireTask(taskId);
-    if (task.stage !== "generation" && task.stage !== "review") throw new Error("只能在生成后运行代码审查");
-    const workItems = this.repo.listWorkItems(taskId);
-    const artifacts = this.repo.listCurrentArtifacts(taskId);
-    const patchSets = this.repo.listCurrentPatchSets(taskId);
-    const project = this.repo.getProject(task.projectId);
-    const revisionPass = this.repo.listBacklinks(taskId).length > 0;
-    const findingGroups = await Promise.all(artifacts.map(async (artifact) => {
-      const workItem = workItems.find((item) => item.id === artifact.workItemId);
-      const subagent = this.repo.getSubagent(artifact.subagentId);
-      if (!workItem || !subagent) return [];
-      this.repo.setWorkItemAssignment(workItem.id, subagent.id, "reviewed");
-      const patchSet = patchSets.find((item) => item.artifactId === artifact.id);
-      const verification = patchSet
-        ? verifyPatchSetInSandbox(project, patchSet, artifact, workItem, subagent)
-        : {
-            findings: [this.buildApplyFinding(artifact, workItem, subagent, "缺少 PatchSet，无法验证变更集。", "重新生成代码产物。")],
-            verificationLog: "Missing patch set.",
-            ok: false
-          };
-      if (patchSet) this.repo.updatePatchSetStatus(patchSet.id, verification.ok ? "verified" : "blocked", verification.verificationLog);
-      const modelFindings = await this.engine.reviewArtifact(artifact, workItem, subagent, revisionPass);
-      return [...verification.findings, ...modelFindings.map((finding) => ({ ...finding, source: finding.source ?? ("model" as const) }))];
-    }));
-    const findings = findingGroups.flat();
-    this.repo.saveFindings(findings);
-    const hasOpenError = findings.some((finding) => finding.status === "open" && finding.severity === "error");
-    this.repo.updateTaskStage(taskId, "review", hasOpenError ? "failed" : "passed");
-    this.refreshCanvas(taskId);
-    return this.repo.getBundle(taskId);
+    return this.withTaskLockAsync(taskId, async () => {
+      const task = this.requireTask(taskId);
+      if (task.stage !== "generation" && task.stage !== "review") throw new AppError("INVALID_STAGE", "只能在生成后运行代码审查", 409);
+      const workItems = this.repo.listWorkItems(taskId);
+      const artifacts = this.repo.listCurrentArtifacts(taskId);
+      const patchSets = this.repo.listCurrentPatchSets(taskId);
+      const project = this.repo.getProject(task.projectId);
+      const revisionPass = this.repo.listBacklinks(taskId).length > 0;
+      const findingGroups = await Promise.all(artifacts.map(async (artifact) => {
+        const workItem = workItems.find((item) => item.id === artifact.workItemId);
+        const subagent = this.repo.getSubagent(artifact.subagentId);
+        if (!workItem || !subagent) return [];
+        this.repo.setWorkItemAssignment(workItem.id, subagent.id, "reviewed");
+        const patchSet = patchSets.find((item) => item.artifactId === artifact.id);
+        const verification = patchSet
+          ? verifyPatchSetInSandbox(project, patchSet, artifact, workItem, subagent)
+          : {
+              findings: [this.buildApplyFinding(artifact, workItem, subagent, "缺少 PatchSet，无法验证变更集。", "重新生成代码产物。")],
+              verificationLog: "Missing patch set.",
+              ok: false,
+              skipped: false
+            };
+        // 未运行真实校验时保持 "pending"，不能标成 "verified"——那会让"从未验证过"看起来像"已通过验证"。
+        if (patchSet) {
+          const patchStatus = verification.skipped ? "pending" : verification.ok ? "verified" : "blocked";
+          this.repo.updatePatchSetStatus(patchSet.id, patchStatus, verification.verificationLog);
+        }
+        const modelFindings = await this.engine.reviewArtifact(artifact, workItem, subagent, revisionPass);
+        return [...verification.findings, ...modelFindings.map((finding) => ({ ...finding, source: finding.source ?? ("model" as const) }))];
+      }));
+      const findings = findingGroups.flat();
+      this.repo.saveFindings(findings);
+      const hasOpenError = findings.some((finding) => finding.status === "open" && finding.severity === "error");
+      this.repo.updateTaskStage(taskId, "review", hasOpenError ? "failed" : "passed");
+      this.refreshCanvas(taskId);
+      return this.repo.getBundle(taskId);
+    });
   }
 
   submit(taskId: string) {
-    const task = this.requireTask(taskId);
-    if (task.stage !== "review") throw new Error("只能在审查后提交");
-    const findings = this.repo.listFindings(taskId);
-    const openError = findings.find((finding) => finding.status === "open" && finding.severity === "error");
-    if (openError) throw new Error("仍有错误级审查问题，不能提交");
-    const project = this.repo.getProject(task.projectId);
-    const patchSets = this.repo.listCurrentPatchSets(taskId);
-    let applySummary = "演示模式：未选择本地项目，仅形成提交记录。";
-    if (project) {
-      const blocked = patchSets.find((patchSet) => patchSet.applyStatus === "blocked");
-      if (blocked) throw new Error("仍有被阻止的变更集，不能应用到项目");
-      const freshProject = this.repo.upsertProject(scanProjectWorkspace(project.rootPath));
-      applySummary = applyPatchSetToProject(freshProject, patchSets);
-      const applyRecord: ApplyRecord = {
-        id: id("apply"),
+    return this.withTaskLock(taskId, () => {
+      const task = this.requireTask(taskId);
+      if (task.stage !== "review") throw new AppError("INVALID_STAGE", "只能在审查后生成提交记录", 409);
+      const findings = this.repo.listFindings(taskId);
+      const openError = findings.find((finding) => finding.status === "open" && finding.severity === "error");
+      if (openError) throw new AppError("APPLY_BLOCKED", "仍有错误级审查问题，不能生成提交记录", 409);
+      const project = this.repo.getProject(task.projectId);
+      const patchSets = this.repo.listCurrentPatchSets(taskId);
+      if (project) {
+        const unapplied = patchSets.find((patchSet) => patchSet.applyStatus !== "applied");
+        if (unapplied) throw new AppError("APPLY_BLOCKED", "本地项目任务需要先应用 PatchSet，再生成提交记录。", 409);
+      }
+      const summary = project
+        ? "已应用到本地项目并形成提交记录。"
+        : "演示模式：未选择本地项目，仅形成提交记录。";
+      this.repo.saveSubmission({
+        id: id("submission"),
         taskId,
-        projectId: freshProject.id,
-        patchSetIds: patchSets.map((patchSet) => patchSet.id),
-        summary: applySummary || "已应用变更到本地项目。",
+        summary: `${task.title} 已完成审查并${project ? "形成提交记录" : "形成演示提交记录"}。\n${summary}`,
+        reviewPassed: true,
         createdAt: now()
-      };
-      this.repo.saveApplyRecord(applyRecord);
-      for (const patchSet of patchSets) this.repo.updatePatchSetStatus(patchSet.id, "applied", patchSet.verificationLog);
-    }
-    this.repo.saveSubmission({
-      id: id("submission"),
-      taskId,
-      summary: `${task.title} 已完成审查并${project ? "应用到本地项目" : "形成提交记录"}。\n${applySummary}`,
-      reviewPassed: true,
-      createdAt: now()
+      });
+      this.repo.updateTaskStage(taskId, "submitted", "passed");
+      return this.repo.getBundle(taskId);
     });
-    this.repo.updateTaskStage(taskId, "submitted", "passed");
-    return this.repo.getBundle(taskId);
+  }
+
+  apply(taskId: string) {
+    return this.withTaskLock(taskId, () => {
+      const task = this.requireTask(taskId);
+      if (task.stage !== "review") throw new AppError("INVALID_STAGE", "只能在审查通过后应用到项目", 409);
+      const findings = this.repo.listFindings(taskId);
+      const openError = findings.find((finding) => finding.status === "open" && finding.severity === "error");
+      if (openError) throw new AppError("APPLY_BLOCKED", "仍有错误级审查问题，不能应用到项目", 409);
+      const project = this.repo.getProject(task.projectId);
+      if (!project) throw new AppError("APPLY_BLOCKED", "未绑定本地项目，不能应用 PatchSet 到磁盘。", 409);
+      const patchSets = this.repo.listCurrentPatchSets(taskId);
+      if (!patchSets.length) throw new AppError("APPLY_BLOCKED", "缺少 PatchSet，不能应用到项目。", 409);
+      const notVerified = patchSets.find((patchSet) => patchSet.applyStatus !== "verified" && patchSet.applyStatus !== "applied");
+      if (notVerified) throw new AppError("APPLY_BLOCKED", "存在未通过验证的 PatchSet，不能应用到项目。", 409, { patchSetId: notVerified.id, status: notVerified.applyStatus });
+      if (patchSets.every((patchSet) => patchSet.applyStatus === "applied")) return this.repo.getBundle(taskId);
+
+      try {
+        const freshProject = this.repo.upsertProject(scanProjectWorkspace(project.rootPath));
+        const applySummary = applyPatchSetToProject(freshProject, patchSets.filter((patchSet) => patchSet.applyStatus !== "applied"));
+        const applyRecord: ApplyRecord = {
+          id: id("apply"),
+          taskId,
+          projectId: freshProject.id,
+          patchSetIds: patchSets.map((patchSet) => patchSet.id),
+          summary: applySummary || "已应用变更到本地项目。",
+          createdAt: now()
+        };
+        this.repo.saveApplyRecord(applyRecord);
+        for (const patchSet of patchSets) this.repo.updatePatchSetStatus(patchSet.id, "applied", patchSet.verificationLog);
+        return this.repo.getBundle(taskId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "应用到项目失败";
+        for (const patchSet of patchSets) {
+          if (patchSet.applyStatus !== "applied") this.repo.updatePatchSetStatus(patchSet.id, "failed", message);
+        }
+        if (error instanceof AppError) throw error;
+        if (/未提交变更/.test(message)) throw new AppError("PROJECT_DIRTY", message, 409);
+        if (/hash 校验失败/.test(message)) throw new AppError("HASH_MISMATCH", message, 409);
+        throw new AppError("APPLY_BLOCKED", `应用失败：${message}`, 409, { partialWritePossible: true });
+      }
+    });
   }
 
   reopenFinding(findingId: string, note: string) {
@@ -365,7 +411,7 @@ export class WorkflowService {
 
   private requireTask(taskId: string) {
     const task = this.repo.getTask(taskId);
-    if (!task) throw new Error("任务不存在");
+    if (!task) throw new AppError("NOT_FOUND", "任务不存在", 404);
     return task;
   }
 
@@ -373,8 +419,28 @@ export class WorkflowService {
     const task = this.repo.listTasks().find((item) =>
       this.repo.listWorkItems(item.id).some((workItem) => workItem.id === workItemId)
     );
-    if (!task) throw new Error("work item 不属于任何任务");
+    if (!task) throw new AppError("NOT_FOUND", "work item 不属于任何任务", 404);
     return task;
+  }
+
+  private withTaskLock<T>(taskId: string, operation: () => T): T {
+    if (this.taskLocks.has(taskId)) throw new AppError("TASK_BUSY", "任务正在执行中，请稍后再试。", 409);
+    this.taskLocks.add(taskId);
+    try {
+      return operation();
+    } finally {
+      this.taskLocks.delete(taskId);
+    }
+  }
+
+  private async withTaskLockAsync<T>(taskId: string, operation: () => Promise<T>): Promise<T> {
+    if (this.taskLocks.has(taskId)) throw new AppError("TASK_BUSY", "任务正在执行中，请稍后再试。", 409);
+    this.taskLocks.add(taskId);
+    try {
+      return await operation();
+    } finally {
+      this.taskLocks.delete(taskId);
+    }
   }
 }
 
@@ -403,11 +469,12 @@ function riskFor(complexity: number): WorkItem["riskLevel"] {
   return "low";
 }
 
-function verificationCommandsFor(project: ProjectWorkspace | null): string[] {
+function verificationCommandsFor(project: ProjectWorkspace | null, requested: string[] = []): string[] {
   if (!project) return [];
-  const runner = project.packageManager === "pnpm" ? "pnpm run" : project.packageManager === "yarn" ? "yarn" : project.packageManager === "bun" ? "bun run" : "npm run";
-  return ["typecheck", "test", "build"]
-    .filter((script) => project.scripts[script])
-    .slice(0, 2)
-    .map((script) => `${runner} ${script}`);
+  const allowList = ["typecheck", "test", "build"];
+  const requestedKeys = requested
+    .map((command) => allowList.find((script) => command === script || new RegExp(`\\b${script}\\b`).test(command)))
+    .filter((script): script is string => Boolean(script));
+  const preferred = requestedKeys.length ? requestedKeys : allowList;
+  return [...new Set(preferred)].filter((script) => project.scripts[script]).slice(0, 2);
 }

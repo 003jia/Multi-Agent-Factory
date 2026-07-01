@@ -1,4 +1,4 @@
-import type { AiProviderConfigInput, AiProviderConfigView, AiStatus, AppSnapshot, ModelTier, ProjectWorkspace, Subagent, TaskBundle } from "./types";
+import type { AiConfigAuditResult, AiProviderConfigInput, AiProviderConfigView, AiStatus, AppSnapshot, ModelTier, ProjectWorkspace, Subagent, TaskBundle } from "./types";
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -10,8 +10,10 @@ const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   });
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error || `请求失败：${response.status}`);
+    const body = (await response.json().catch(() => ({}))) as { error?: string; code?: string; details?: unknown };
+    const error = new Error(body.error || `请求失败：${response.status}`);
+    Object.assign(error, { code: body.code, details: body.details });
+    throw error;
   }
 
   return response.json() as Promise<T>;
@@ -21,6 +23,7 @@ export const api = {
   health: () => request<AiStatus & { ok: boolean; service: string }>("/api/health"),
   getAiConfig: () => request<AiProviderConfigView>("/api/settings/ai-config"),
   setAiConfig: (body: AiProviderConfigInput) => request<AiStatus>("/api/settings/ai-config", { method: "POST", body: JSON.stringify(body) }),
+  auditAiConfig: (body: AiProviderConfigInput) => request<AiConfigAuditResult>("/api/settings/ai-config/audit", { method: "POST", body: JSON.stringify(body) }),
   snapshot: (taskId?: string) => request<AppSnapshot>(`/api/snapshot${taskId ? `?taskId=${taskId}` : ""}`),
   scanProject: (rootPath: string) => request<ProjectWorkspace>("/api/projects/scan", { method: "POST", body: JSON.stringify({ rootPath }) }),
   projectContext: (projectId: string) => request<{ project: ProjectWorkspace; files: string[] }>(`/api/projects/${projectId}/context`),

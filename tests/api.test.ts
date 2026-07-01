@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app";
 import type { FactoryRepository } from "../server/db";
-import type { AppSnapshot, ProjectWorkspace, TaskBundle } from "../src/types";
+import type { AiConfigAuditResult, AiStatus, AppSnapshot, ProjectWorkspace, TaskBundle } from "../src/types";
 
 let server: Server | null = null;
 let repo: FactoryRepository | null = null;
@@ -24,8 +24,8 @@ afterEach(async () => {
   projectDir = null;
 });
 
-async function startApi() {
-  const created = createApp({ dbPath: ":memory:" });
+async function startApi(options: { allowHttpProjectScan?: boolean } = { allowHttpProjectScan: true }) {
+  const created = createApp({ dbPath: ":memory:", allowHttpProjectScan: options.allowHttpProjectScan });
   repo = created.repo;
   const { app } = created;
   server = app.listen(0, "127.0.0.1");
@@ -86,8 +86,73 @@ describe("API workflow", () => {
     const reviewed = await json<TaskBundle>(baseUrl, `/api/tasks/${created.task.id}/review`, { method: "POST" });
     expect(reviewed.canvas.nodes.some((node) => node.type === "diff")).toBe(true);
 
-    const submitted = await json<TaskBundle>(baseUrl, `/api/tasks/${created.task.id}/apply`, { method: "POST" });
+    const applied = await json<TaskBundle>(baseUrl, `/api/tasks/${created.task.id}/apply`, { method: "POST" });
+    expect(applied.task.stage).toBe("review");
+    expect(applied.applyRecords).toHaveLength(1);
+    expect(applied.patchSets.every((patchSet) => patchSet.applyStatus === "applied")).toBe(true);
+
+    const submitted = await json<TaskBundle>(baseUrl, `/api/tasks/${created.task.id}/submit`, { method: "POST" });
     expect(submitted.task.stage).toBe("submitted");
-    expect(submitted.applyRecords).toHaveLength(1);
+    expect(submitted.submissions).toHaveLength(1);
+  });
+
+  it("blocks HTTP project scans unless explicitly enabled", async () => {
+    const { baseUrl } = await startApi({ allowHttpProjectScan: false });
+    const response = await fetch(`${baseUrl}/api/projects/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rootPath: "/tmp/example" })
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: "PROJECT_SCAN_DISABLED" });
+  });
+
+  it("returns structured validation errors for invalid task input", async () => {
+    const { baseUrl } = await startApi();
+    const response = await fetch(`${baseUrl}/api/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: "", complexity: 11 })
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("audits AI API key configuration without returning the raw key", async () => {
+    const { baseUrl } = await startApi();
+
+    const missing = await json<AiConfigAuditResult>(baseUrl, "/api/settings/ai-config/audit", {
+      method: "POST",
+      body: JSON.stringify({ provider: "openai" })
+    });
+    expect(missing.status).toBe("failed");
+    expect(missing.canUseRealModel).toBe(false);
+    expect(missing.items.some((item) => item.id === "api-key-missing")).toBe(true);
+
+    await json<AiStatus>(baseUrl, "/api/settings/ai-config", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: "openai",
+        apiKey: "sk-test-local-only",
+        baseUrl: "https://api.openai.com/v1",
+        economyModel: "gpt-4o-mini",
+        qualityModel: "gpt-4o"
+      })
+    });
+    const reused = await json<AiConfigAuditResult>(baseUrl, "/api/settings/ai-config/audit", {
+      method: "POST",
+      body: JSON.stringify({
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        economyModel: "gpt-4o-mini",
+        qualityModel: "gpt-4o"
+      })
+    });
+
+    expect(reused.status).toBe("passed");
+    expect(reused.keyMasked).toBe("sk-tes...only");
+    expect(JSON.stringify(reused)).not.toContain("sk-test-local-only");
   });
 });

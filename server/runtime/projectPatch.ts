@@ -24,6 +24,7 @@ import type {
 } from "../../src/types.js";
 import { verifyArtifactFiles } from "./verify.js";
 import type { WrittenFile } from "./workspace.js";
+import { AppError } from "../errors.js";
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${randomUUID().slice(0, 10)}`;
@@ -85,12 +86,15 @@ export function verifyPatchSetInSandbox(
   artifact: GeneratedArtifact,
   workItem: WorkItem,
   subagent: Subagent
-): { findings: ReviewFinding[]; verificationLog: string; ok: boolean } {
+): { findings: ReviewFinding[]; verificationLog: string; ok: boolean; skipped?: boolean } {
   if (!project) {
     return {
-      findings: [buildFinding(artifact, workItem, subagent, "static", "warning", "resolved", "未选择本地项目，跳过沙箱验证。", "桌面端选择项目后可运行真实门禁。")],
-      verificationLog: "No project workspace selected; sandbox verification skipped.",
-      ok: true
+      // status "open"（非 "resolved"）：未绑定项目时真实校验从未运行，不能显示成"已通过/已解决"。
+      // severity 仍是 "warning" 而非 "error"，所以不会阻塞审查/提交——这只是一个可见的"未验证"提醒。
+      findings: [buildFinding(artifact, workItem, subagent, "static", "warning", "open", "未选择本地项目，未运行真实静态校验（不是“已通过”）。", "绑定本地项目后可运行真实编译/测试门禁。")],
+      verificationLog: "No project workspace selected; sandbox verification was not run (not a pass).",
+      ok: true,
+      skipped: true
     };
   }
 
@@ -149,7 +153,7 @@ export function verifyPatchSetInSandbox(
 }
 
 export function applyPatchSetToProject(project: ProjectWorkspace, patchSets: PatchSet[]): string {
-  if (project.gitStatus === "dirty") throw new Error("项目存在未提交变更，默认阻止应用。请先提交或清理工作区后重试。");
+  if (project.gitStatus === "dirty") throw new AppError("PROJECT_DIRTY", "项目存在未提交变更，默认阻止应用。请先提交或清理工作区后重试。", 409);
   const applied: string[] = [];
   for (const patchSet of patchSets) {
     applyPatchSetToRoot(project.rootPath, patchSet, { verifyHash: true });
@@ -183,7 +187,7 @@ function applyPatchSetToRoot(rootPath: string, patchSet: PatchSet, options: { ve
     if (!isWithin(rootPath, abs)) throw new Error(`变更路径逃逸项目根目录：${change.path}`);
     if (options.verifyHash) {
       const currentHash = existsSync(abs) ? hashContent(readFileSync(abs)) : null;
-      if (currentHash !== change.originalHash) throw new Error(`${change.path} 已变化，hash 校验失败，阻止应用。`);
+      if (currentHash !== change.originalHash) throw new AppError("HASH_MISMATCH", `${change.path} 已变化，hash 校验失败，阻止应用。`, 409);
     }
     if (change.kind === "delete") {
       rmSync(abs, { force: true });
@@ -227,7 +231,8 @@ function copyDirectory(source: string, target: string) {
 
 function runVerificationCommands(project: ProjectWorkspace, cwd: string, workItemCommands: string[]) {
   const selected = selectVerificationCommands(project, workItemCommands);
-  return selected.map((command) => {
+  return selected.map((script) => {
+    const command = `${packageManagerRunner(project.packageManager)} ${script}`;
     const [bin, ...args] = command.split(" ");
     const result = spawnSync(bin, args, { cwd, encoding: "utf8", timeout: 30000, shell: false });
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
@@ -236,13 +241,13 @@ function runVerificationCommands(project: ProjectWorkspace, cwd: string, workIte
 }
 
 function selectVerificationCommands(project: ProjectWorkspace, workItemCommands: string[]) {
-  const explicit = workItemCommands.filter(Boolean);
+  const allowList = ["typecheck", "test", "build"];
+  const explicit = [...new Set(workItemCommands.filter((script) => allowList.includes(script) && project.scripts[script]))];
   if (explicit.length) return explicit.slice(0, 3);
   const scripts = Object.keys(project.scripts);
   return ["typecheck", "test", "build"]
     .filter((script) => scripts.includes(script))
-    .slice(0, 3)
-    .map((script) => `${packageManagerRunner(project.packageManager)} ${script}`);
+    .slice(0, 3);
 }
 
 function packageManagerRunner(pm: ProjectWorkspace["packageManager"]) {

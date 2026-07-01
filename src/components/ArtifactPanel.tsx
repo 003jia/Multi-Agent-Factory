@@ -3,11 +3,12 @@ import type { TaskBundle } from "../types";
 interface ArtifactPanelProps {
   bundle: TaskBundle;
   onReview: () => Promise<void>;
+  onApply: () => Promise<void>;
   onSubmit: () => Promise<void>;
   onReopen: (findingId: string) => Promise<void>;
 }
 
-export function ArtifactPanel({ bundle, onReview, onSubmit, onReopen }: ArtifactPanelProps) {
+export function ArtifactPanel({ bundle, onReview, onApply, onSubmit, onReopen }: ArtifactPanelProps) {
   if (!bundle.artifacts.length) {
     return (
       <section className="panel empty-panel">
@@ -18,6 +19,9 @@ export function ArtifactPanel({ bundle, onReview, onSubmit, onReopen }: Artifact
   }
 
   const hasOpenError = bundle.findings.some((finding) => finding.status === "open" && finding.severity === "error");
+  const hasAppliedProjectChanges = Boolean(bundle.project && bundle.patchSets.length && bundle.patchSets.every((patchSet) => patchSet.applyStatus === "applied"));
+  const canApplyProjectChanges = Boolean(bundle.project && bundle.task.stage === "review" && !hasOpenError && bundle.findings.length && !hasAppliedProjectChanges);
+  const canSubmit = bundle.task.stage === "review" && !hasOpenError && Boolean(bundle.findings.length) && (!bundle.project || hasAppliedProjectChanges);
 
   return (
     <section className="panel">
@@ -30,8 +34,13 @@ export function ArtifactPanel({ bundle, onReview, onSubmit, onReopen }: Artifact
           <button className="secondary-button" disabled={bundle.task.stage !== "generation" && bundle.task.stage !== "review"} onClick={onReview} type="button">
             运行代码审查
           </button>
-          <button className="primary-button" disabled={bundle.task.stage !== "review" || hasOpenError || !bundle.findings.length} onClick={onSubmit} type="button">
-            {bundle.project ? "应用到项目" : "形成提交记录"}
+          {bundle.project && (
+            <button className="primary-button" disabled={!canApplyProjectChanges} onClick={onApply} type="button">
+              应用到项目
+            </button>
+          )}
+          <button className="primary-button" disabled={!canSubmit} onClick={onSubmit} type="button">
+            {bundle.project ? "生成提交记录" : "形成提交记录"}
           </button>
         </div>
       </div>
@@ -53,13 +62,13 @@ export function ArtifactPanel({ bundle, onReview, onSubmit, onReopen }: Artifact
                 <button className="secondary-button" onClick={() => downloadArtifactBundle(artifact)} type="button">
                   下载全部产物
                 </button>
-                {patchSet && <span className={`status-badge status-${patchSet.applyStatus === "blocked" ? "failed" : patchSet.applyStatus === "verified" || patchSet.applyStatus === "applied" ? "passed" : "running"}`}>PatchSet：{patchSet.applyStatus}</span>}
+                {patchSet && <span className={`status-badge status-${patchSet.applyStatus === "blocked" || patchSet.applyStatus === "failed" ? "failed" : patchSet.applyStatus === "verified" || patchSet.applyStatus === "applied" ? "passed" : "running"}`}>PatchSet：{patchSet.applyStatus}</span>}
               </div>
               {patchSet && (
                 <div className="patchset-card">
                   <div className="patchset-summary">
                     <strong>{patchSet.changes.length} 个文件变更</strong>
-                    <span>{patchSet.applyStatus === "applied" ? "已应用" : patchSet.applyStatus === "verified" ? "已验证，等待应用" : patchSet.applyStatus === "blocked" ? "被门禁阻止" : "等待审查"}</span>
+                    <span>{patchSet.applyStatus === "applied" ? "已应用" : patchSet.applyStatus === "verified" ? "已验证，等待应用" : patchSet.applyStatus === "blocked" ? "被门禁阻止" : patchSet.applyStatus === "failed" ? "应用失败" : "等待审查"}</span>
                   </div>
                   <div className="change-list">
                     {patchSet.changes.map((change) => (

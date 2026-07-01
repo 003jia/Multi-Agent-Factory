@@ -2,8 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, nativeImage } from "electron";
 import { Server } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAiConfigView, getMaskedApiKey, readAiConfig, writeAiConfig } from "./settings.js";
-import type { AiProvider, AiProviderConfig, AiProviderConfigInput, AiProviderConfigView } from "./settings.js";
+import { auditAiConfig, getAiConfigView, getMaskedApiKey, readAiConfig, writeAiConfig } from "./settings.js";
+import type { AiConfigAuditResult, AiProvider, AiProviderConfig, AiProviderConfigInput, AiProviderConfigView } from "./settings.js";
 
 type AiStatus = {
   aiEnabled: boolean;
@@ -85,6 +85,7 @@ function assertSqliteRuntime() {
 
 ipcMain.handle("settings:get-ai-status", () => control?.getAiStatus());
 ipcMain.handle("settings:get-ai-config", (): AiProviderConfigView => getAiConfigView());
+ipcMain.handle("settings:audit-ai-config", (_event, config: AiProviderConfigInput): AiConfigAuditResult => auditAiConfig(config));
 ipcMain.handle("settings:get-api-key-masked", () => getMaskedApiKey());
 ipcMain.handle("settings:set-ai-config", (_event, config: AiProviderConfigInput) => {
   const aiConfig = writeAiConfig(config);

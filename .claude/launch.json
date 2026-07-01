@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["NODE_ENV=production", "node", "dist/server/server/index.js"],
+      "port": 4173,
+      "autoPort": true
+    }
+  ]
+}
