@@ -10,3 +10,6 @@ assets/icons/*.svg.png
 assets/icons/*.iconset/
 assets/icons/*-render.html
 output/
+.playwright-mcp/
+dev-server.*.log
+.upload-tmp/

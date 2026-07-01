@@ -233,11 +233,18 @@ function runVerificationCommands(project: ProjectWorkspace, cwd: string, workIte
   const selected = selectVerificationCommands(project, workItemCommands);
   return selected.map((script) => {
     const command = `${packageManagerRunner(project.packageManager)} ${script}`;
-    const [bin, ...args] = command.split(" ");
-    const result = spawnSync(bin, args, { cwd, encoding: "utf8", timeout: 30000, shell: false });
+    const result = spawnVerificationCommand(command, cwd);
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
     return { command, ok: !result.error && result.status === 0, output: output || "(no output)" };
   });
+}
+
+function spawnVerificationCommand(command: string, cwd: string) {
+  if (process.platform === "win32") {
+    return spawnSync(command, { cwd, encoding: "utf8", timeout: 30000, shell: true });
+  }
+  const [bin, ...args] = command.split(" ");
+  return spawnSync(bin, args, { cwd, encoding: "utf8", timeout: 30000, shell: false });
 }
 
 function selectVerificationCommands(project: ProjectWorkspace, workItemCommands: string[]) {
