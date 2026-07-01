@@ -13,6 +13,7 @@
     "dist": "npm run build && npm run build:electron && electron-builder",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "test": "vitest run",
+    "mcp:stdio": "tsx server/mcp/stdio.ts",
     "start": "node dist/server/server/index.js"
   },
   "dependencies": {

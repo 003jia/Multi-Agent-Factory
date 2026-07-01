@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
-import type { AiConfigAuditResult, AiProvider, AiProviderConfigInput, AiStatus } from "../types";
+import type { AiConfigAuditResult, AiProvider, AiProviderConfigInput, AiStatus, McpConnectionInfo } from "../types";
 
 interface SettingsPanelProps {
   status: AiStatus | null;
@@ -18,6 +18,7 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
   const [messageTone, setMessageTone] = useState<"success" | "warning" | "error">("success");
   const [auditResult, setAuditResult] = useState<AiConfigAuditResult | null>(null);
   const [auditBusy, setAuditBusy] = useState(false);
+  const [mcpInfo, setMcpInfo] = useState<McpConnectionInfo | null>(null);
   const desktopAvailable = Boolean(window.desktop);
 
   useEffect(() => {
@@ -35,6 +36,12 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
         setMessage(error instanceof Error ? error.message : "读取模型配置失败");
       });
   }, [status?.mode, status?.provider, status?.keyMasked]);
+
+  useEffect(() => {
+    void api.getMcpConfig()
+      .then(setMcpInfo)
+      .catch(() => setMcpInfo(null));
+  }, []);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -186,6 +193,7 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
         {auditResult && <AuditResult result={auditResult} />}
         {message && <p className={`${messageTone === "success" ? "success-text" : messageTone === "warning" ? "warning-text" : "danger-text"} settings-message`}>{message}</p>}
       </form>
+      {mcpInfo && <McpConnectionPanel info={mcpInfo} />}
     </section>
   );
 
@@ -198,6 +206,55 @@ export function SettingsPanel({ status, onStatusChange }: SettingsPanelProps) {
       qualityModel: qualityModel.trim() || undefined
     };
   }
+}
+
+function McpConnectionPanel({ info }: { info: McpConnectionInfo }) {
+  return (
+    <div className="mcp-panel">
+      <div className="mcp-heading">
+        <div>
+          <h3>MCP 连接 Codex / Claude Code</h3>
+          <p>把当前工作台作为本地 MCP Server，让外部 Agent 调用任务编排工具。</p>
+        </div>
+        <span className={`status-badge status-${info.status === "missing-build" ? "failed" : info.status === "ready" ? "passed" : "running"}`}>
+          {info.status === "ready" ? "可连接" : info.status === "dev" ? "开发模式" : "需构建"}
+        </span>
+      </div>
+      <div className="mcp-meta-grid">
+        <div>
+          <span>server</span>
+          <strong>{info.serverName}</strong>
+        </div>
+        <div>
+          <span>transport</span>
+          <strong>{info.transport}</strong>
+        </div>
+        <div>
+          <span>tools</span>
+          <strong>{info.tools.length}</strong>
+        </div>
+      </div>
+      <div className="mcp-config-grid">
+        <div>
+          <strong>Claude Code</strong>
+          <pre>{JSON.stringify(info.claudeCode.config, null, 2)}</pre>
+        </div>
+        <div>
+          <strong>Codex</strong>
+          <pre>{JSON.stringify(info.codex.config, null, 2)}</pre>
+        </div>
+      </div>
+      {info.claudeCode.addCommand && (
+        <div className="mcp-command">
+          <strong>Claude Code CLI</strong>
+          <code>{info.claudeCode.addCommand.map((part) => part.includes(" ") ? `"${part}"` : part).join(" ")}</code>
+        </div>
+      )}
+      <div className="mcp-notes">
+        {info.notes.map((note) => <span key={note}>{note}</span>)}
+      </div>
+    </div>
+  );
 }
 
 function AuditResult({ result }: { result: AiConfigAuditResult }) {

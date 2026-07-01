@@ -7,6 +7,7 @@ import type { AgentEngine } from "./agents/engine.js";
 import { createEngine, engineStatus, maskApiKey, normalizeConfig } from "./agents/index.js";
 import type { AiConfigAuditResult, AiProviderConfig, AiProviderConfigInput, AiProviderConfigView, AiStatus } from "../src/types.js";
 import { AppError } from "./errors.js";
+import { getMcpConnectionInfo } from "./mcp/connection.js";
 import {
   parseAiConfigInput,
   parseAssignmentInput,
@@ -62,6 +63,10 @@ export function createApp(options: AppOptions = {}) {
     } catch (error) {
       next(error);
     }
+  });
+
+  app.get("/api/settings/mcp", (_request, response) => {
+    response.json(getMcpConnectionInfo());
   });
 
   app.get("/api/snapshot", (request, response) => {

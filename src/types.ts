@@ -284,3 +284,32 @@ export interface AiStatus {
   models: Record<ModelTier, string>;
   keyMasked?: string;
 }
+
+export interface McpServerCommand {
+  type: "stdio";
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface McpClientConfig {
+  name: string;
+  description: string;
+  config: {
+    mcpServers: Record<string, McpServerCommand>;
+  };
+  addCommand?: string[];
+  note: string;
+}
+
+export interface McpConnectionInfo {
+  serverName: string;
+  transport: "stdio";
+  status: "ready" | "dev" | "missing-build";
+  rootDir: string;
+  dbPath: string;
+  tools: string[];
+  claudeCode: McpClientConfig;
+  codex: McpClientConfig;
+  notes: string[];
+}

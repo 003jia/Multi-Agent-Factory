@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../server/app";
 import type { FactoryRepository } from "../server/db";
-import type { AiConfigAuditResult, AiStatus, AppSnapshot, ProjectWorkspace, TaskBundle } from "../src/types";
+import type { AiConfigAuditResult, AiStatus, AppSnapshot, McpConnectionInfo, ProjectWorkspace, TaskBundle } from "../src/types";
 
 let server: Server | null = null;
 let repo: FactoryRepository | null = null;
@@ -154,5 +154,15 @@ describe("API workflow", () => {
     expect(reused.status).toBe("passed");
     expect(reused.keyMasked).toBe("sk-tes...only");
     expect(JSON.stringify(reused)).not.toContain("sk-test-local-only");
+  });
+
+  it("returns MCP connection config for Claude Code and Codex", async () => {
+    const { baseUrl } = await startApi();
+    const info = await json<McpConnectionInfo>(baseUrl, "/api/settings/mcp");
+
+    expect(info.serverName).toBe("multi-agent-factory");
+    expect(info.claudeCode.config.mcpServers["multi-agent-factory"].type).toBe("stdio");
+    expect(info.codex.config.mcpServers["multi-agent-factory"].command).toBeTruthy();
+    expect(info.tools).toContain("create_task");
   });
 });

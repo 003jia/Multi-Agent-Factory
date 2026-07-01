@@ -1,4 +1,4 @@
-import type { AiConfigAuditResult, AiProviderConfigInput, AiProviderConfigView, AiStatus, AppSnapshot, ModelTier, ProjectWorkspace, Subagent, TaskBundle } from "./types";
+import type { AiConfigAuditResult, AiProviderConfigInput, AiProviderConfigView, AiStatus, AppSnapshot, McpConnectionInfo, ModelTier, ProjectWorkspace, Subagent, TaskBundle } from "./types";
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const response = await fetch(url, {
@@ -24,6 +24,7 @@ export const api = {
   getAiConfig: () => request<AiProviderConfigView>("/api/settings/ai-config"),
   setAiConfig: (body: AiProviderConfigInput) => request<AiStatus>("/api/settings/ai-config", { method: "POST", body: JSON.stringify(body) }),
   auditAiConfig: (body: AiProviderConfigInput) => request<AiConfigAuditResult>("/api/settings/ai-config/audit", { method: "POST", body: JSON.stringify(body) }),
+  getMcpConfig: () => request<McpConnectionInfo>("/api/settings/mcp"),
   snapshot: (taskId?: string) => request<AppSnapshot>(`/api/snapshot${taskId ? `?taskId=${taskId}` : ""}`),
   scanProject: (rootPath: string) => request<ProjectWorkspace>("/api/projects/scan", { method: "POST", body: JSON.stringify({ rootPath }) }),
   projectContext: (projectId: string) => request<{ project: ProjectWorkspace; files: string[] }>(`/api/projects/${projectId}/context`),
